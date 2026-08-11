@@ -1,0 +1,5 @@
+pynput==1.7.6
+PyQt6==6.7.1
+pyobjc-framework-Cocoa; sys_platform == 'darwin'
+pandas
+openpyxl
