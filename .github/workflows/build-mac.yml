@@ -26,12 +26,12 @@ jobs:
         
     - name: Build macOS app with PyInstaller
       run: |
-        pyinstaller --noconsole --onefile --windowed main.py
+        pyinstaller --noconsole --onefile --windowed --name Timer main.py
         
     - name: Zip the .app (Required to preserve Mac file structure)
       run: |
         cd dist
-        zip -r RadiologistTimer-macOS.zip main.app
+        zip -r RadiologistTimer-macOS.zip Timer.app
         
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
