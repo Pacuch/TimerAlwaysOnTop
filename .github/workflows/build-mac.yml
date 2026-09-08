@@ -3,7 +3,12 @@ name: Build macOS App
 on:
   push:
     branches: [ main, master ]
+    tags:
+      - 'v*'
   workflow_dispatch: # Allows you to run this manually from the Actions tab
+
+permissions:
+  contents: write
 
 jobs:
   build-mac:
@@ -38,3 +43,19 @@ jobs:
       with:
         name: RadiologistTimer-macOS
         path: dist/RadiologistTimer-macOS.zip
+
+    - name: Publish to GitHub Releases
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}
+        name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'Latest macOS Build' }}
+        body: |
+          Automatyczny build aplikacji dla systemu macOS.
+          Pobierz `RadiologistTimer-macOS.zip`, rozpakuj i uruchom `Timer.app`.
+        draft: false
+        prerelease: false
+        make_latest: "true"
+        files: dist/RadiologistTimer-macOS.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
