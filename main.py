@@ -3,9 +3,13 @@ import config
 import sqlite3
 import datetime
 import threading
+from pathlib import Path
 from pynput import mouse
 from PyQt6.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QHBoxLayout
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
+from PyQt6.QtGui import QDesktopServices
+
+import export_data
 
 DB_FILE = config.DB_FILE
 
@@ -57,12 +61,17 @@ def get_active_window_title():
         return "Unknown (Unsupported OS)"
 
 class ModernTimer(QWidget):
+    export_finished_signal = pyqtSignal(bool, str, str)
+
     def __init__(self):
         super().__init__()
         
         self.is_timing = False
         self.start_time = None
         self.mouse_listener = None
+        self.is_exporting = False
+        
+        self.export_finished_signal.connect(self.on_export_finished)
         
         self.init_ui()
         
@@ -88,9 +97,16 @@ class ModernTimer(QWidget):
         self.container_layout.setSpacing(0)  # Remove gap between top bar and timer
         self.layout.addWidget(self.container)
         
-        # Top bar layout (for close button)
+        # Top bar layout (download button on the left, close button on the right)
         self.top_bar = QHBoxLayout()
         self.top_bar.setContentsMargins(0, 0, 0, 0)
+        
+        self.download_btn = QPushButton("⤓", self)
+        self.download_btn.setObjectName("DownloadBtn")
+        self.download_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.download_btn.setFixedSize(20, 20)
+        self.download_btn.setToolTip("Eksportuj do Excela (Biurko)")
+        self.download_btn.clicked.connect(self.trigger_export)
         
         self.close_btn = QPushButton("✕", self)
         self.close_btn.setObjectName("CloseBtn")
@@ -98,6 +114,7 @@ class ModernTimer(QWidget):
         self.close_btn.setFixedSize(20, 20)
         self.close_btn.clicked.connect(self.close)
         
+        self.top_bar.addWidget(self.download_btn)
         self.top_bar.addStretch()
         self.top_bar.addWidget(self.close_btn)
         
@@ -144,7 +161,7 @@ class ModernTimer(QWidget):
                 margin-top: 5px;
             }
             #StartBtn {
-                background-color: #a6e3a1; /* Pastel Green */
+                background-color: #a6e3a1;
                 color: #11111b;
                 font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
                 font-size: 16px;
@@ -157,7 +174,7 @@ class ModernTimer(QWidget):
                 background-color: #94cc90;
             }
             #StopBtn {
-                background-color: #f38ba8; /* Pastel Red */
+                background-color: #f38ba8;
                 color: #11111b;
                 font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
                 font-size: 16px;
@@ -169,15 +186,26 @@ class ModernTimer(QWidget):
             #StopBtn:hover {
                 background-color: #da7d97;
             }
+            #DownloadBtn {
+                background-color: transparent;
+                color: #7f849c;
+                font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
+                font-size: 14px;
+                font-weight: bold;
+                border: none;
+            }
+            #DownloadBtn:hover {
+                color: #89b4fa;
+            }
             #CloseBtn {
                 background-color: transparent;
-                color: #7f849c; /* Subtle, dimmer gray */
+                color: #7f849c;
                 font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
                 font-size: 12px;
                 border: none;
             }
             #CloseBtn:hover {
-                color: #f38ba8; /* Turns red on hover */
+                color: #f38ba8;
             }
         """)
 
@@ -269,7 +297,44 @@ class ModernTimer(QWidget):
             minutes = (total_seconds % 3600) // 60
             seconds = total_seconds % 60
             self.time_label.setText(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
-            
+
+    def trigger_export(self):
+        if self.is_exporting:
+            return
+        self.is_exporting = True
+        self.download_btn.setText("⏳")
+        self.download_btn.setToolTip("Eksportowanie danych...")
+
+        def run_export():
+            success, message, file_path = export_data.export_to_excel()
+            self.export_finished_signal.emit(success, message, file_path or "")
+
+        threading.Thread(target=run_export, daemon=True).start()
+
+    def on_export_finished(self, success, message, file_path):
+        if success and file_path:
+            self.download_btn.setText("✓")
+            self.download_btn.setStyleSheet("color: #a6e3a1; font-size: 14px; font-weight: bold; border: none;")
+            file_name = Path(file_path).name
+            self.download_btn.setToolTip(f"Zapisano na Biurku:\n{file_name}")
+            try:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(file_path)))
+            except Exception:
+                pass
+        else:
+            self.download_btn.setText("!")
+            self.download_btn.setStyleSheet("color: #f9e2af; font-size: 14px; font-weight: bold; border: none;")
+            self.download_btn.setToolTip(message or "Błąd eksportu")
+
+        def reset_btn():
+            self.is_exporting = False
+            self.download_btn.setText("⤓")
+            self.download_btn.setStyleSheet("")
+            self.download_btn.setToolTip("Eksportuj do Excela (Biurko)")
+            self.apply_styles()
+
+        QTimer.singleShot(2500, reset_btn)
+
     # Enable dragging for frameless window
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
